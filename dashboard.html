@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Smart Crop Detection & Fertilizer Spray • Live Dashboard</title>
+<style>
+  :root{
+    --bg:#0e1610; --panel:#132017; --card:#0c1410; --line:rgba(255,255,255,.08);
+    --text:#e8f6ec; --muted:#9dc9a6; --accent:#4fcf71; --ok:#3edc74; --warn:#ffd166; --err:#ff6b6b;
+    --radius:18px; --shadow:0 22px 60px rgba(0,0,0,.35);
+}
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; font-family:Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+    color:var(--text);
+    background: radial-gradient(1200px 900px at 12% -10%, #1b2350 0%, #0b0f20 55%, #060913 100%);
+  }
+  .page{max-width:1280px; margin:20px auto; padding:0 16px;}
+
+  /* HEADER */
+  .top{
+    display:flex; align-items:center; gap:14px; margin-bottom:14px;
+  }
+  .logo{
+    width:42px; height:42px; border-radius:12px; background:linear-gradient(160deg,#6ba4ff,#3d6aff);
+    display:grid; place-items:center; font-weight:900; letter-spacing:.4px; box-shadow:var(--shadow);
+  }
+  h1{margin:0; font-size: clamp(18px,2.6vw,28px); letter-spacing:.25px}
+  .tag{margin-left:auto; padding:8px 12px; border-radius:999px; background:rgba(96,165,255,.12); border:1px solid rgba(96,165,255,.4); font-size:12px;}
+
+  /* LAYOUT */
+  .grid{display:grid; grid-template-columns: 1.35fr .95fr; gap:16px}
+  @media (max-width: 980px){ .grid{grid-template-columns:1fr} }
+
+  /* CARDS */
+  .card{
+    background:linear-gradient(180deg, #12183b, #0e1533 55%, #0b122b 100%);
+    border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow);
+  }
+  .card-h{
+    display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0));
+  }
+  .title{font-size:13px; text-transform:uppercase; letter-spacing:.38px; color:var(--muted)}
+  .hint{font-size:12px; color:var(--muted)}
+  .pad{padding:12px}
+
+  /* CAMERA */
+  .cam{position:relative; background:#000; aspect-ratio:16/9}
+  video{width:100%; height:100%; object-fit:cover; display:block; background:#000}
+  .badge{position:absolute; top:10px; left:10px; padding:6px 10px; font-size:12px; font-weight:800; border-radius:999px; color:#cfe0ff; background:rgba(96,165,255,.18); border:1px solid rgba(96,165,255,.4); backdrop-filter: blur(6px)}
+  .fallback{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; color:var(--muted)}
+  .row{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+
+  .btn{appearance:none; border:0; border-radius:12px; padding:10px 14px; font-weight:800; font-size:14px; cursor:pointer; color:#fff;
+       background:linear-gradient(180deg,#3b66ff,#2b4fe6); box-shadow:0 10px 26px rgba(59,102,255,.35)}
+  .btn.sec{background:linear-gradient(180deg,#283055,#212848); box-shadow:none}
+  .btn.ghost{background:transparent; border:1px solid var(--line); color:var(--muted)}
+  .btn.warn{background:linear-gradient(180deg,#ffb703,#ff9f1a)}
+  .btn.ok{background:linear-gradient(180deg,#19c37d,#0ea86b)}
+  .btn:disabled{opacity:.6; cursor:not-allowed}
+
+  /* RIGHT SIDEBAR */
+  .side{display:flex; flex-direction:column; gap:12px; padding:12px}
+  .slot{ background:var(--card); border:1px solid var(--line); border-radius:14px; overflow:hidden }
+  .slot-h{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:10px 12px; border-bottom:1px solid var(--line)}
+  .slot-name{font-weight:900; letter-spacing:.2px}
+  .slot-media{position:relative; background:#0a0d1b; aspect-ratio:1/1}
+  .slot-media img{width:100%; height:100%; object-fit:cover; display:block}
+  .slot-f{display:flex; gap:8px; padding:10px; border-top:1px solid var(--line); align-items:center; flex-wrap:wrap}
+  .meta{font-size:12px; color:var(--muted); margin-left:auto}
+
+  /* LISTS */
+  .list{margin-top:10px; background:var(--panel); border:1px solid var(--line); border-radius:14px; overflow:hidden}
+  .list .rowi{display:flex; gap:10px; padding:8px 12px; align-items:center; border-top:1px solid var(--line)}
+  .list .rowi:first-child{border-top:0}
+  .dot{width:10px; height:10px; border-radius:50%}
+  .ok{background:var(--ok)} .no{background:#5a617a} .warn{background:var(--warn)}
+
+  /* TELEMETRY */
+  .stats{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+  @media (max-width:520px){ .stats{grid-template-columns:1fr 1fr} }
+  .stat{padding:12px; border-radius:14px; border:1px solid var(--line); background:linear-gradient(180deg,#141a3d,#0e1431)}
+  .stat .k{font-size:22px; font-weight:900}
+  .stat .l{font-size:12px; color:var(--muted)}
+
+  /* TOAST */
+  .msg{position:fixed; right:14px; bottom:14px; max-width:360px; padding:12px 14px; border-radius:12px; font-size:14px; box-shadow:var(--shadow)}
+  .msg.err{background:rgba(255,107,107,.12); border:1px solid rgba(255,107,107,.5); color:#ffdede}
+  .msg.ok{background:rgba(57,217,138,.12); border:1px solid rgba(57,217,138,.5); color:#e7fff2}
+  .msg.info{background:rgba(96,165,255,.12); border:1px solid rgba(96,165,255,.45); color:#e3efff}
+</style>
+</head>
+<body>
+  <div class="page">
+    <div class="top">
+      <div class="logo">AG</div>
+      <h1>Smart Crop Detection & Fertilizer Spray • Live Dashboard</h1>
+      <span class="tag">Prototype UI • Offline</span>
+    </div>
+
+    <div class="grid">
+      <!-- LEFT: Camera + Controls + Telemetry -->
+      <section class="card">
+        <div class="card-h">
+          <div>
+            <div class="title">Camera Preview</div>
+            <div class="hint">Allow permission • Capture a frame • Assign to a Zone/Crop</div>
+          </div>
+          <div class="hint">Mode: Visual</div>
+        </div>
+        <div class="cam">
+          <video id="camera" autoplay playsinline muted></video>
+          <div class="badge">LIVE</div>
+          <div class="fallback" id="camFallback" hidden>Camera not available. Please allow permission.</div>
+        </div>
+        <div class="pad">
+          <div class="row">
+            <button id="btnCapture" class="btn" type="button">Capture Frame</button>
+            <button id="btnMirror" class="btn sec" type="button">Toggle Mirror</button>
+            <button id="btnClear" class="btn ghost" type="button">Clear Shots</button>
+            <span class="hint" id="shotHint">No shot yet.</span>
+          </div>
+        </div>
+        <div class="pad">
+          <div class="title" style="margin-bottom:8px;">Field Telemetry (demo)</div>
+          <div class="stats">
+            <div class="stat"><div class="k" id="soilMoist">43%</div><div class="l">Soil Moisture</div></div>
+            <div class="stat"><div class="k" id="tankLevel">68%</div><div class="l">Fertilizer Tank</div></div>
+            <div class="stat"><div class="k" id="sprayRate">0 L/min</div><div class="l">Spray Rate</div></div>
+          </div>
+        </div>
+        <div class="pad">
+          <div class="row">
+            <button id="btnPrime" class="btn warn" type="button">Prime Pump</button>
+            <button id="btnSpray" class="btn ok" type="button">Start Spray</button>
+            <button id="btnStop" class="btn sec" type="button">Stop</button>
+            <span class="hint">Controls are simulated for UI testing.</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Zones/Crops Sidebar -->
+      <aside class="card">
+        <div class="card-h">
+          <div class="title">Right Sidebar • 5 Zones / Crops</div>
+          <div class="hint">Wheat • Rice • Maize • Cotton • Soybean</div>
+        </div>
+        <div class="side" id="slots"></div>
+        <div class="pad">
+          <div class="title" style="margin-bottom:6px;">Assignment Status</div>
+          <div class="list" id="statusList"></div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <div id="toast" class="msg" style="display:none"></div>
+
+<script>
+/* ---------- Config (UPDATED TO CROPS / ZONES) ---------- */
+const FIXED_ZONES = [
+  { key:"cheery",  rule:"N-rich urea: 40–60 kg/ha (split)" },
+  { key:"corn",   rule:"NPK 10:26:26 at tillering" },
+  { key:"tomato",  rule:"NPK 20:20:0; add Zn if deficient" },
+  { key:"tomato 2", rule:"NPK 12:32:16; foliar at squaring" },
+  { key:"potato",rule:"DAP basal; foliar K if needed" }
+];
+
+const PLACEHOLDER =
+  "data:image/svg+xml;charset=UTF-8," +
+  encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 800 800'>
+  <defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'>
+    <stop offset='0' stop-color='#0e1531'/><stop offset='1' stop-color='#0b1126'/></linearGradient></defs>
+  <rect width='100%' height='100%' fill='url(#g)'/>
+  <g fill='#60a5ff' opacity='0.4'><circle cx='400' cy='320' r='120'/></g>
+  <g opacity='0.8'><rect x='200' y='540' width='400' height='40' rx='8' fill='#1e293b'/></g>
+  <text x='400' y='570' font-size='28' text-anchor='middle' fill='#9aa4bf' font-family='sans-serif'>No image yet</text>
+</svg>`);
+
+/* ---------- DOM refs ---------- */
+const video = document.getElementById("camera");
+const camFallback = document.getElementById("camFallback");
+const btnCapture = document.getElementById("btnCapture");
+const btnMirror = document.getElementById("btnMirror");
+const btnClear = document.getElementById("btnClear");
+const shotHint = document.getElementById("shotHint");
+const slotsWrap = document.getElementById("slots");
+const statusList = document.getElementById("statusList");
+const toast = document.getElementById("toast");
+const soilMoist = document.getElementById("soilMoist");
+const tankLevel = document.getElementById("tankLevel");
+const sprayRate = document.getElementById("sprayRate");
+const btnPrime = document.getElementById("btnPrime");
+const btnSpray = document.getElementById("btnSpray");
+const btnStop = document.getElementById("btnStop");
+
+/* ---------- State ---------- */
+let streamRef = null;
+let mirrored = false;
+let lastShotDataUrl = null; // pure frame (no name)
+const imagesByZone = new Map(); // key -> dataURL (with label)
+
+/* ---------- Camera ---------- */
+async function startCamera(){
+  try{
+    streamRef = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" }, audio: false });
+    video.srcObject = streamRef;
+    camFallback.hidden = true;
+    applyMirror();
+  }catch(e){
+    camFallback.hidden = false;
+    console.warn("Camera error:", e);
+    showMsg("Camera unavailable. Check permissions.", "err");
+  }
+}
+function applyMirror(){ video.style.transform = mirrored ? "scaleX(-1)" : "none"; }
+btnMirror.addEventListener("click", () => { mirrored = !mirrored; applyMirror(); });
+
+btnCapture.addEventListener("click", () => {
+  if(!streamRef){ showMsg("Camera not ready.", "err"); return; }
+  const w = video.videoWidth || 1280, h = video.videoHeight || 720;
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const ctx = c.getContext("2d");
+  if(mirrored){ ctx.translate(w,0); ctx.scale(-1,1); }
+  ctx.drawImage(video, 0, 0, w, h);
+  lastShotDataUrl = c.toDataURL("image/png");
+  shotHint.textContent = "Last shot ready. Assign to any zone.";
+  showMsg("Captured! Now click ‘Use Live Shot’ on a zone.", "ok");
+});
+
+btnClear.addEventListener("click", () => {
+  lastShotDataUrl = null;
+  imagesByZone.clear();
+  document.querySelectorAll('.slot-media img').forEach(img => img.src = PLACEHOLDER);
+  refreshStatus();
+  showMsg("Cleared all assigned shots.", "info");
+});
+
+/* ---------- UI Build: Zones ---------- */
+function renderSlots(){
+  slotsWrap.innerHTML = "";
+  for(const z of FIXED_ZONES){
+    const idSafe = `slot-${z.key.replace(/\s+/g,'_')}`;
+    const slot = document.createElement("div");
+    slot.className = "slot";
+    slot.innerHTML = `
+      <div class="slot-h">
+        <div>
+          <div class="slot-name">${z.key}</div>
+          <div class="hint">Fertilizer Hint: ${z.rule}</div>
+        </div>
+        <button class="btn ghost" id="${idSafe}-detect" type="button" title="Run detection (mock)">Detect</button>
+      </div>
+      <div class="slot-media"><img id="${idSafe}-img" alt="${z.key}" src="${PLACEHOLDER}"></div>
+      <div class="slot-f">
+        <label class="btn sec" for="${idSafe}-file">Upload</label>
+        <input id="${idSafe}-file" type="file" accept="image/*" hidden>
+        <button class="btn" id="${idSafe}-use" type="button">Use Live Shot</button>
+        <span class="meta" id="${idSafe}-meta">waiting…</span>
+      </div>
+    `;
+    slotsWrap.appendChild(slot);
+
+    const fileInput = slot.querySelector(`#${idSafe}-file`);
+    const imgEl = slot.querySelector(`#${idSafe}-img`);
+    const metaEl = slot.querySelector(`#${idSafe}-meta`);
+    const useBtn = slot.querySelector(`#${idSafe}-use`);
+    const detectBtn = slot.querySelector(`#${idSafe}-detect`);
+
+    // Upload (no filename restriction now)
+    fileInput.addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if(!file) return;
+      const imgURL = URL.createObjectURL(file);
+      try{
+        const stamped = await paintWithLabel(imgURL, z.key);
+        imgEl.src = stamped;
+        imagesByZone.set(z.key, stamped);
+        metaEl.textContent = `set by upload (${file.name})`;
+        refreshStatus();
+        showMsg(`Image set for “${z.key}” ✅`, "ok");
+      }catch(err){ console.error(err); showMsg("Could not read the image file.", "err"); }
+    });
+
+    // Assign live shot
+    useBtn.addEventListener("click", async () => {
+      if(!lastShotDataUrl){ showMsg("No captured frame yet. Click ‘Capture Frame’.", "err"); return; }
+      const stamped = await paintWithLabel(lastShotDataUrl, z.key);
+      imgEl.src = stamped;
+      imagesByZone.set(z.key, stamped);
+      metaEl.textContent = "set by live shot";
+      refreshStatus();
+      showMsg(`Live shot applied to “${z.key}” ✅`, "ok");
+    });
+
+    // Mock detection button (random result)
+    detectBtn.addEventListener('click', () => {
+      const outcomes = [
+        { t:'Healthy', c:'ok' },
+        { t:'Nitrogen Deficiency', c:'warn' },
+        { t:'Pest Risk', c:'warn' },
+        { t:'Irrigation Needed', c:'warn' }
+      ];
+      const r = outcomes[Math.floor(Math.random()*outcomes.length)];
+      metaEl.textContent = r.t;
+      detectBtn.className = `btn ghost ${r.c==='ok'?'':'warn'}`;
+      showMsg(`${z.key}: ${r.t}`, r.c==='ok'?'ok':'info');
+    });
+  }
+}
+
+/* ---------- Draw helper: stamp label on image ---------- */
+function paintWithLabel(src, label){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const w = img.naturalWidth || 1024, h = img.naturalHeight || 1024;
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      const ctx = c.getContext("2d");
+      ctx.drawImage(img, 0, 0, w, h);
+
+      // Bottom banner
+      const barH = Math.max(Math.round(h * 0.12), 64);
+      ctx.fillStyle = "rgba(8,12,28,0.78)"; ctx.fillRect(0, h - barH, w, barH);
+      ctx.fillStyle = "rgba(96,165,255,0.65)"; ctx.fillRect(0, h - barH, w, 2);
+
+      // Text
+      const pad = Math.round(barH * 0.3);
+      const fontSize = Math.round(barH * 0.46);
+      ctx.font = `900 ${fontSize}px Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial`;
+      ctx.fillStyle = "#e9edff"; ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(0,0,0,.6)"; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2;
+
+      let text = label; const maxWidth = w - pad*2;
+      while(ctx.measureText(text).width > maxWidth && text.length > 1){ text = text.slice(0,-1); }
+      ctx.fillText(text, pad, h - barH/2);
+
+      resolve(c.toDataURL("image/png"));
+    };
+    img.onerror = reject; img.src = src;
+  });
+}
+
+/* ---------- Status list ---------- */
+function refreshStatus(){
+  statusList.innerHTML = "";
+  for(const z of FIXED_ZONES){
+    const row = document.createElement("div");
+    row.className = "rowi";
+    const has = imagesByZone.has(z.key);
+    row.innerHTML = `
+      <div class="dot ${has ? 'ok':'no'}"></div>
+      <div style="min-width:88px; font-weight:900">${z.key}</div>
+      <div class="hint">${has ? 'Image set' : 'Not set'}</div>
+    `;
+    statusList.appendChild(row);
+  }
+}
+
+/* ---------- Toast ---------- */
+let toastTimer = null;
+function showMsg(text, kind="ok"){
+  toast.textContent = text;
+  toast.className = `msg ${kind}`;
+  toast.style.display = "block";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> toast.style.display="none", 3500);
+}
+
+/* ---------- Telemetry demo loop ---------- */
+setInterval(() => {
+  const m = 35 + Math.round(Math.random()*30); // 35–65
+  const t = 55 + Math.round(Math.random()*40); // 55–95
+  const r = Math.random() > .6 ? (0.6 + Math.random()*1.6).toFixed(1) : 0;
+  soilMoist.textContent = m + "%";
+  tankLevel.textContent = t + "%";
+  sprayRate.textContent = r + " L/min";
+}, 3000);
+
+/* ---------- Spray controls (mock) ---------- */
+btnPrime.addEventListener('click', ()=> showMsg('Pump priming for 5s (mock)…','info'));
+btnSpray.addEventListener('click', ()=> showMsg('Spraying started at target rate (mock).','ok'));
+btnStop.addEventListener('click', ()=> showMsg('All actuators stopped.','info'));
+
+/* ---------- Boot ---------- */
+renderSlots();
+refreshStatus();
+if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){ startCamera(); }
+else{ camFallback.hidden = false; showMsg("Camera not supported on this device.", "err"); }
+</script>
+</body>
+</html>
